@@ -2,13 +2,67 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { employeeLogout } from "../../redux/employee/employeeSlice";
+import jsPDF from 'jspdf';
 
 export default function ViewFeedback() {
   const [feedback, setFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
   const dispatch = useDispatch();
+
+  const truncateText = (text, maxLength) => {
+    if (!text) return '';
+    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+  };
+
+  const filteredFeedback = feedback.filter((fb) =>
+    fb.userId?.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    fb.orderId?._id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    fb.feedback?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    fb.rating?.toString().includes(searchTerm)
+  );
+
+  const generateReport = () => {
+    const doc = new jsPDF();
+    
+    doc.setFontSize(18);
+    doc.text('Feedback Report', 14, 20);
+    
+    doc.setFontSize(11);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
+    
+    const headers = ['User', 'Order ID', 'Feedback', 'Rating', 'Date'];
+    let yPos = 40;
+    
+    doc.setFontSize(10);
+    
+    headers.forEach((header, i) => {
+      doc.text(header, 14 + (i * 38), yPos);
+    });
+    
+    yPos += 2;
+    doc.line(14, yPos, 196, yPos);
+    yPos += 6;
+    
+    filteredFeedback.forEach((fb) => {
+      if (yPos > 280) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      doc.text(fb.userId?.username || 'N/A', 14, yPos);
+      doc.text(fb.orderId?._id || 'N/A', 52, yPos);
+      doc.text(truncateText(fb.feedback, 30) || '', 90, yPos);
+      doc.text(fb.rating?.toString() || '', 128, yPos);
+      doc.text(new Date(fb.createdAt).toLocaleDateString() || '', 166, yPos);
+      
+      yPos += 7;
+    });
+    
+    doc.save('feedback-report.pdf');
+  };
 
   // Fetch all feedback
   useEffect(() => {
@@ -98,7 +152,34 @@ export default function ViewFeedback() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-extrabold text-[#161A1D] mb-8">All Feedback</h1>
+        {/* Title and Search Section */}
+        <div className="flex flex-col gap-6 mb-8">
+          <div className="flex justify-between items-center">
+            <div className="flex flex-col">
+              <h1 className="text-3xl font-extrabold text-[#161A1D]">All Feedback</h1>
+              {error && (
+                <p className="text-sm text-[#660708] mt-1">Error: {error}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Search Bar and Generate Report Button */}
+          <div className="flex items-center gap-4">
+            <input
+              type="text"
+              placeholder="Search feedback..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full max-w-md px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#660708] focus:border-transparent"
+            />
+            <button
+              onClick={generateReport}
+              className="bg-[#660708] text-[#F5F3F4] px-6 py-2 rounded-lg hover:bg-[#7A0B0B] focus:outline-none focus:ring-2 focus:ring-[#660708] focus:ring-offset-2 transition-all whitespace-nowrap"
+            >
+              Generate Report
+            </button>
+          </div>
+        </div>
 
         {/* Feedback Table */}
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -126,47 +207,62 @@ export default function ViewFeedback() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F5F3F4]">
-              {feedback.map((fb) => (
-                <tr
-                  key={fb._id}
-                  className="hover:bg-[#F5F3F4] transition-colors duration-200"
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    {fb.userId?.username || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    {fb.orderId?._id || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    {fb.feedback}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    <div className="flex space-x-1">
-                      {[...Array(5)].map((_, index) => (
-                        <span
-                          key={index}
-                          className={`text-2xl ${
-                            index < fb.rating ? "text-yellow-400" : "text-gray-300"
-                          }`}
-                        >
-                          ★
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    {new Date(fb.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <button
-                      onClick={() => handleDeleteFeedback(fb._id)}
-                      className="bg-[#660708] text-[#F5F3F4] px-4 py-2 rounded-md hover:bg-[#7A0B0B] focus:outline-none focus:ring-2 focus:ring-[#660708] focus:ring-offset-2 transition-all"
-                    >
-                      Delete
-                    </button>
+              {filteredFeedback.length > 0 ? (
+                filteredFeedback.map((fb) => (
+                  <tr
+                    key={fb._id}
+                    className="hover:bg-[#F5F3F4] transition-colors duration-200"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      {fb.userId?.username || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      {fb.orderId?._id || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      <span title={fb.feedback}>
+                        {truncateText(fb.feedback, 20)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      <div className="flex space-x-1">
+                        {[...Array(5)].map((_, index) => (
+                          <span
+                            key={index}
+                            className={`text-2xl ${
+                              index < fb.rating ? "text-yellow-400" : "text-gray-300"
+                            }`}
+                          >
+                            ★
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      {new Date(fb.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <button
+                        onClick={() => handleDeleteFeedback(fb._id)}
+                        className="bg-[#660708] text-[#F5F3F4] px-4 py-2 rounded-md hover:bg-[#7A0B0B] focus:outline-none focus:ring-2 focus:ring-[#660708] focus:ring-offset-2 transition-all"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan="6"
+                    className="px-6 py-8 whitespace-nowrap text-sm text-center text-gray-500"
+                  >
+                    {searchTerm
+                      ? "No feedback found matching your search."
+                      : "No feedback available."}
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

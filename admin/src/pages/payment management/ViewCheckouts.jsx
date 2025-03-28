@@ -2,13 +2,80 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { employeeLogout } from "../../redux/employee/employeeSlice";
+import jsPDF from 'jspdf';
 
 export default function ViewCheckouts() {
   const [checkouts, setCheckouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const navigate = useNavigate();
   const dispatch = useDispatch();
+
+  // Add truncate text helper
+  const truncateText = (text, maxLength) => {
+    if (!text) return '';
+    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+  };
+
+  // Add filter function for checkouts
+  const filteredCheckouts = checkouts.filter((checkout) =>
+    checkout.userId?.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    checkout.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    checkout.phoneNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    checkout.status?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Add generate report function
+  const generateReport = () => {
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(18);
+    doc.text('Checkouts Report', 14, 20);
+    
+    // Add current date
+    doc.setFontSize(11);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
+    
+    // Table headers
+    const headers = ['User', 'Email', 'Phone', 'Total Price', 'Status', 'Date'];
+    let yPos = 40;
+    
+    // Set font size for table
+    doc.setFontSize(10);
+    
+    // Add headers
+    headers.forEach((header, i) => {
+      doc.text(header, 14 + (i * 32), yPos);
+    });
+    
+    // Add horizontal line
+    yPos += 2;
+    doc.line(14, yPos, 196, yPos);
+    yPos += 6;
+    
+    // Add checkout data
+    filteredCheckouts.forEach((checkout) => {
+      // Check if we need a new page
+      if (yPos > 280) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      doc.text(checkout.userId?.username || 'N/A', 14, yPos);
+      doc.text(checkout.email || '', 46, yPos);
+      doc.text(checkout.phoneNumber || '', 78, yPos);
+      doc.text(`$${checkout.totalPrice}` || '', 110, yPos);
+      doc.text(checkout.status || '', 142, yPos);
+      doc.text(new Date(checkout.createdAt).toLocaleDateString() || '', 174, yPos);
+      
+      yPos += 7;
+    });
+    
+    // Save the PDF
+    doc.save('checkouts-report.pdf');
+  };
 
   // Fetch all checkouts
   useEffect(() => {
@@ -129,7 +196,34 @@ export default function ViewCheckouts() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-extrabold text-[#161A1D] mb-8">All Checkouts</h1>
+        {/* Title and Search Section */}
+        <div className="flex flex-col gap-6 mb-8">
+          <div className="flex justify-between items-center">
+            <div className="flex flex-col">
+              <h1 className="text-3xl font-extrabold text-[#161A1D]">All Checkouts</h1>
+              {error && (
+                <p className="text-sm text-[#660708] mt-1">Error: {error}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Search Bar and Generate Report Button */}
+          <div className="flex items-center gap-4">
+            <input
+              type="text"
+              placeholder="Search checkouts..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full max-w-md px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#660708] focus:border-transparent"
+            />
+            <button
+              onClick={generateReport}
+              className="bg-[#660708] text-[#F5F3F4] px-6 py-2 rounded-lg hover:bg-[#7A0B0B] focus:outline-none focus:ring-2 focus:ring-[#660708] focus:ring-offset-2 transition-all whitespace-nowrap"
+            >
+              Generate Report
+            </button>
+          </div>
+        </div>
 
         {/* Checkouts Table */}
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -163,64 +257,79 @@ export default function ViewCheckouts() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F5F3F4]">
-              {checkouts.map((checkout) => (
-                <tr
-                  key={checkout._id}
-                  className="hover:bg-[#F5F3F4] transition-colors duration-200"
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    {checkout.userId?.username || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    {checkout.email}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    {checkout.phoneNumber}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    {checkout.address}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    ${checkout.totalPrice}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    <select
-                      value={checkout.status}
-                      onChange={(e) => handleStatusUpdate(checkout._id, e.target.value)}
-                      className={`px-2 py-1 rounded-full text-sm ${
-                        checkout.status === "Delivered"
-                          ? "bg-green-100 text-green-800"
-                          : checkout.status === "Cancelled"
-                          ? "bg-red-100 text-red-800"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Processing">Processing</option>
-                      <option value="Shipped">Shipped</option>
-                      <option value="Delivered">Delivered</option>
-                      <option value="Cancelled">Cancelled</option>
-                    </select>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
-                    {new Date(checkout.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <Link
-                      to={`/checkoutdetails/${checkout._id}`}
-                      className="bg-[#660708] text-[#F5F3F4] px-4 py-2 rounded-md hover:bg-[#7A0B0B] focus:outline-none focus:ring-2 focus:ring-[#660708] focus:ring-offset-2 transition-all"
-                    >
-                      View Details
-                    </Link>
-                    <button
-                      onClick={() => handleDeleteCheckout(checkout._id)}
-                      className="ml-2 bg-[#660708] text-[#F5F3F4] px-4 py-2 rounded-md hover:bg-[#7A0B0B] focus:outline-none focus:ring-2 focus:ring-[#660708] focus:ring-offset-2 transition-all"
-                    >
-                      Delete
-                    </button>
+              {filteredCheckouts.length > 0 ? (
+                filteredCheckouts.map((checkout) => (
+                  <tr
+                    key={checkout._id}
+                    className="hover:bg-[#F5F3F4] transition-colors duration-200"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      {checkout.userId?.username || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      {checkout.email}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      {checkout.phoneNumber}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      <span title={checkout.address}>
+                        {truncateText(checkout.address, 20)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      ${checkout.totalPrice}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      <select
+                        value={checkout.status}
+                        onChange={(e) => handleStatusUpdate(checkout._id, e.target.value)}
+                        className={`px-2 py-1 rounded-full text-sm ${
+                          checkout.status === "Delivered"
+                            ? "bg-green-100 text-green-800"
+                            : checkout.status === "Cancelled"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="Processing">Processing</option>
+                        <option value="Shipped">Shipped</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#161A1D]">
+                      {new Date(checkout.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <Link
+                        to={`/checkoutdetails/${checkout._id}`}
+                        className="bg-[#660708] text-[#F5F3F4] px-4 py-2 rounded-md hover:bg-[#7A0B0B] focus:outline-none focus:ring-2 focus:ring-[#660708] focus:ring-offset-2 transition-all"
+                      >
+                        View Details
+                      </Link>
+                      <button
+                        onClick={() => handleDeleteCheckout(checkout._id)}
+                        className="ml-2 bg-[#660708] text-[#F5F3F4] px-4 py-2 rounded-md hover:bg-[#7A0B0B] focus:outline-none focus:ring-2 focus:ring-[#660708] focus:ring-offset-2 transition-all"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan="8"
+                    className="px-6 py-8 whitespace-nowrap text-sm text-center text-gray-500"
+                  >
+                    {searchTerm
+                      ? "No checkouts found matching your search."
+                      : "No checkouts available."}
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
